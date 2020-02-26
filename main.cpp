@@ -92,12 +92,16 @@ int main(int argc, char** argv) {
     
     Sphere s11(Vector(0,-10,-28), 10, Vector(1,1,1));
     
+    
+    Triangle tri(Vector(-10,-10,-20), Vector(10,-10,-20), Vector(0,10,-20), Vector(1,0,0));
+    
     Vector position_lumiere(15, 30, -20);
     Sphere slum(Vector(15, 30, -20), 5, Vector(1,1,1));
     //s.lumiere = &slum;
     
     Vector position_camera(0,7,36);
-
+    double focus_distance = 36 + 40; // tout ce qui est avant ou apres est flou
+    
     Scene s;
     s.addSpheres(slum); // A mettre en premiere position
     s.addSpheres(s1);
@@ -112,6 +116,7 @@ int main(int argc, char** argv) {
     s.addSpheres(s10);
     s.addSpheres(s11);
     //s.addSpheres(s12);
+    s.addTriangle(tri);
     
     
     
@@ -130,22 +135,35 @@ int main(int argc, char** argv) {
             Vector intensite_pixel(0,0,0);
             
             for (int k=0; k < nrays; k++) {
-                // Anti-aliasing
+                // Anti-aliasing - methode Box Muller
                 double r1 = uniform(engine);
                 double r2 = uniform(engine);
                 double R = sqrt(-2 * log(r1));
                 double dx = R * cos(2 * M_pi * r2);
                 double dy = R * sin(2 * M_pi * r2);
+                
+                // Variation de la profondeur de champ
+                // ouverture carree
+                double dx_aperture = (uniform(engine) - 0.5) * 5.;
+                double dy_aperture = (uniform(engine) - 0.5) * 5.;
+                
                 // Rayon qui part de la camera et passe par le pixel (i,j)
                 Vector direction(j - W / 2.0 + 0.5 + dx, i - H / 2.0 + 0.5 + dy, -W / (2 * tan(fov / 2)));
                 direction.normalize();
-                Ray r(position_camera, direction);
+                
+                // Mise au point, flou
+                Vector destination = position_camera + focus_distance * direction;
+                Vector new_origin = position_camera + Vector(dx_aperture, dy_aperture, 0);
+                
+                //Ray r(position_camera, direction);
+                Ray r(new_origin, (destination - new_origin).getNormalized());
                 
                 int numero_rebond = rebounds_max;
                 int numero_rebond_transp = numero_rebond_transp_max;
                 intensite_pixel = intensite_pixel + s.getColor2(r, numero_rebond, numero_rebond_transp) / nrays;
             }
-            
+
+
             // Enregistrement des couleurs des pixels
             image[((H-i-1)*W + j) * 3 + 0] = std::min(255., std::max(0., intensite_pixel[0]));
             image[((H-i-1)*W + j) * 3 + 1] = std::min(255., std::max(0., intensite_pixel[1]));
