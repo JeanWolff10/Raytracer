@@ -19,7 +19,6 @@
 #include <iostream>
 using namespace std;
 
-
 class Vector {
 public:
     // Constructeur
@@ -77,36 +76,45 @@ public:
     Vector origin, direction;
 };
 
-class Sphere{
+class Object {
 public:
-    // Attributs de la classe
-    Vector O;
-    double R;
     // Albedo rend compte du reflet pour chaque couleur
     Vector albedo;
     bool is_mirror;
     bool is_transparent;
     bool is_bulle;
-    // Constructeur
-    Sphere(const Vector &origin, double rayon, const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) : O(origin), R(rayon), albedo(couleur), is_mirror(is_mirror), is_transparent(is_transparent), is_bulle(is_bulle) {};
+    Object(const Vector &couleur, bool is_mirror = false, bool is_transparent = false, bool is_bulle = false) :
+    is_mirror(is_mirror), is_transparent(is_transparent), is_bulle(is_bulle) {
+        albedo = couleur;
+    };
+    virtual bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const = 0;
     
-    bool intersection(const Ray& d, Vector& P, Vector& N, double &t) {
+};
+
+class Sphere : public Object {
+public:
+    // Attributs de la classe
+    Vector O;
+    double R;
+
+    // Constructeur
+    Sphere(const Vector &origin, double rayon, const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) : O(origin), R(rayon), Object(couleur, is_mirror, is_transparent, is_bulle) {
+    };
+    
+    bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const {
         // resolution de l equation du 2nd degre
         double a = 1.;
         double b = 2. * dot(d.direction, d.origin - O);
         double c = (d.origin - O).getNorm2() - R*R;
         double delta =  b*b - 4. * a*c;
         if (delta < 0) return false;
-        
         double t1 = (-b - sqrt(delta)) / (2. * a);
         double t2 = (-b + sqrt(delta)) / (2. * a);
-        
         if (t2 < 0) return false;
         if (t1 > 0)
             t = t1;
         else
             t = t2;
-
         // P est le point d'intersection entre le rayon incident et la sphere
         P = d.origin + t * d.direction;
         // N est la normale a la sphere au point P
@@ -114,19 +122,60 @@ public:
         return true;
     }
 };
+
+class Triangle : public Object {
+public:
+    Vector A, B, C;
     
+    Triangle(const Vector& A, const Vector &B, const Vector& C, const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) : A(A), B(B), C(C), Object(couleur, is_mirror, is_transparent, is_bulle) {
+    };
+
+    bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const {
+        N = cross(B-A, C-A).getNormalized();
+        t = dot(C - d.origin, N) / dot(d.direction, N);
+        if (t<0) return false;
+        
+        P = d.origin + t*d.direction;
+        Vector u = B-A;
+        Vector v = C-A;
+        Vector w = P-A;
+        double m11 = u.getNorm2();
+        double m12 = dot(u,v);
+        double m22 = v.getNorm2();
+        double detm = m11*m22 - m12*m12;
+        
+        double b11 = dot(w,u);
+        double b21 = dot(w, v);
+        double detb = b11*m22 - b21 * m12;
+        double beta = detb/detm;
+        
+        double g12 = b11;
+        double g22 = b21;
+        double detg = m11*g22 - m12*g12;
+        double gamma = detg / detm;
+        
+        double alpha = 1 - beta - gamma;
+        if (alpha < 0 || alpha > 1) return false;
+        if (beta < 0 || beta > 1) return false;
+        if (gamma < 0 || gamma > 1) return false;
+        if (alpha + beta + gamma > 1) return false; // if erronne a 27:00
+        return true;
+    }
+};
+
 class Scene{
 public:
     Scene() {};
-    void addSpheres(const Sphere& s) {spheres.push_back(s);}
+    void addSpheres(const Sphere& s) {objects.push_back(&s);}
+    void addTriangle(const Triangle& s) {objects.push_back(&s);}
 
-    bool intersection(const Ray& d, Vector& P, Vector& N, int &sphere_id, double& t) {
+    bool intersection(const Ray& d, Vector& P, Vector& N, int &sphere_id, double& t) const {
         bool has_inter = false;
         double min_t = 1E99;
         
-        for (int i=0; i<spheres.size(); i++) {
+        for (int i=0; i<objects.size(); i++) {
             Vector localP, localN;
-            bool local_has_inter = spheres[i].intersection(d, localP, localN, t);
+            bool local_has_inter = objects[i]->intersection(d, localP, localN, t);
             if (local_has_inter) {
                 has_inter = true; 
                 // Teste si la sphere est plus proche que la plus proche actuelle
@@ -169,7 +218,8 @@ public:
     Vector getColor2(const Ray& d, int &numero_rebond, int &numero_rebond_transp) {
         double epsilon = 0.00001;
         double intensite_lumiere = 5000000;
-        Vector position_lumiere(15, 30, -20);
+        Vector position_lumiere(15, 30, -10);
+        double rayon_lumiere = 5;
         Vector intensite_pixel(0,0,0);
         Vector P, N;
         int sphere_id;
@@ -184,8 +234,8 @@ public:
         P = P + epsilon * N;
         if (has_inter) {
             
-            bool is_mirror = this->spheres[sphere_id].is_mirror;
-            bool is_transparent = this->spheres[sphere_id].is_transparent;
+            bool is_mirror = this->objects[sphere_id]->is_mirror;
+            bool is_transparent = this->objects[sphere_id]->is_transparent;
             
             if (is_mirror and numero_rebond > 0) {
                 numero_rebond = numero_rebond - 1;
@@ -209,7 +259,7 @@ public:
                 double n1 = n_air;
                 double n2 = n_sphere;
                 // Cas d'une bulle
-                bool is_bulle = this->spheres[sphere_id].is_bulle;
+                bool is_bulle = this->objects[sphere_id]->is_bulle;
                 if (is_bulle) {
                     n1 = n_sphere;
                     n2 = n_air;
@@ -266,10 +316,10 @@ public:
                 
                 // CONTRIBUTION DIRECTE (lumiere spherique)
                 // Direction aleatoire entre le centre de la lumiere et son hemisphere du cote de P
-                Vector axe_PO = (P - spheres[0].O).getNormalized();
+                Vector axe_PO = (P - position_lumiere).getNormalized();
                 Vector dir_aleatoire = random_cos(axe_PO);
                 // Point a la surface de la sphere lumineuse
-                Vector point_aleatoire = dir_aleatoire * spheres[0].R + spheres[0].O;
+                Vector point_aleatoire = dir_aleatoire * rayon_lumiere + position_lumiere;
                 Vector wi = (point_aleatoire - P).getNormalized();
                 double d_light2 = (point_aleatoire - P).getNorm2();
                 // Normale au point aleatoire
@@ -287,7 +337,7 @@ public:
                     intensite_pixel = Vector(0,0,0);
                 }
                 else {
-                    intensite_pixel = intensite_lumiere / (4 * M_pi * d_light2) * std::max(0., dot(N, wi)) * std::max(0., dot(Np, -wi)) / proba * this->spheres[sphere_id].albedo;
+                    intensite_pixel = intensite_lumiere / (4 * M_pi * d_light2) * std::max(0., dot(N, wi)) * std::max(0., dot(Np, -wi)) / proba * this->objects[sphere_id]->albedo;
                 }
                 
                 // CONTRIBUTION INDIRECTE
@@ -297,7 +347,7 @@ public:
                     Vector direction_aleatoire = random_cos(N);
                     Ray rayon_aleatoire(P, direction_aleatoire);
                     // Calcul de la couleur du point dont on voit le reflet
-                    intensite_pixel = intensite_pixel + this->spheres[sphere_id].albedo * this->getColor2(rayon_aleatoire, numero_rebond, numero_rebond_transp) / 2;
+                    intensite_pixel = intensite_pixel + this->objects[sphere_id]->albedo * this->getColor2(rayon_aleatoire, numero_rebond, numero_rebond_transp) / 2;
                     // (diviser par pi)
                 }
             }
@@ -310,5 +360,5 @@ public:
     
     
     // Ensemble des spheres de la scene
-    std::vector<Sphere> spheres;
+    std::vector<const Object*> objects;
 };
