@@ -79,13 +79,20 @@ public:
 
 class Object {
 public:
-    Object() {};
-    virtual bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const = 0;
-    
+    // Albedo rend compte du reflet pour chaque couleur
     Vector albedo;
     bool is_mirror;
     bool is_transparent;
     bool is_bulle;
+    
+    Object(const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) {
+        albedo = couleur;
+        is_mirror = is_mirror;
+        is_transparent = is_transparent;
+        is_bulle = is_bulle;
+    };
+    virtual bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const = 0;
+    
 };
 
 class Sphere : public Object {
@@ -93,18 +100,9 @@ public:
     // Attributs de la classe
     Vector O;
     double R;
-    // Albedo rend compte du reflet pour chaque couleur
-    Vector albedo;
-    bool is_mirror;
-    bool is_transparent;
-    bool is_bulle;
-    
+
     // Constructeur
-    Sphere(const Vector &origin, double rayon, const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) : O(origin), R(rayon) {
-        albedo = couleur;
-        is_mirror = is_mirror;
-        is_transparent = is_transparent;
-        is_bulle = is_bulle;
+    Sphere(const Vector &origin, double rayon, const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) : O(origin), R(rayon), Object(couleur, is_mirror, is_transparent, is_bulle) {
     };
     
     bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const {
@@ -133,11 +131,7 @@ class Triangle : public Object {
 public:
     Vector A, B, C;
     
-    Triangle(const Vector& A, const Vector &B, const Vector& C, const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) : A(A), B(B), C(C) {
-        albedo = couleur;
-        is_mirror = is_mirror;
-        is_transparent = is_transparent;
-        is_bulle = is_bulle;
+    Triangle(const Vector& A, const Vector &B, const Vector& C, const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) : A(A), B(B), C(C), Object(couleur, is_mirror, is_transparent, is_bulle) {
     };
     
     bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const {
@@ -159,19 +153,19 @@ public:
         double b21 = dot(w,v);
         // b22 = m22
         double detb = b11 * m22 - b21 * m12;
-        double beta = detb / detm; // Coord barycentrale / a B
+        double beta = detb / detm; // Coord barycentrique / a B
         double g12 = b11;
         double g22 = b21;
-        double detg = m11 * g22 - m12 * g12; // Coord barycentrale / a C
+        double detg = m11 * g22 - m12 * g12; // Coord barycentrique / a C
         double gamma = detg / detm;
-        double alpha = 1 - beta - gamma; // Coord barycentrale / a A
+        double alpha = 1 - beta - gamma; // Coord barycentrique / a A
         if (alpha < 0 || alpha > 1) return false;
         if (beta < 0 || beta > 1) return false;
         if (gamma < 0 || gamma > 1) return false;
         return true;
     }
 };
-    
+
 class Scene{
 public:
     Scene() {};
@@ -350,7 +344,7 @@ public:
                 }
                 
                 // CONTRIBUTION INDIRECTE
-                if (numero_rebond > 0) {
+                if (numero_rebond > 100) {
                     // LUMIERE SPHERIQUE
                     numero_rebond = numero_rebond - 1;
                     Vector direction_aleatoire = random_cos(N);
