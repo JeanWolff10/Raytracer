@@ -19,83 +19,25 @@
 #include <math.h>
 
 #define M_pi 3.1416
+#include "Vector.h"
+#include "Classes.hpp"
+
 // Pour afficher des variables
 #include <iostream>
 using namespace std;
 
+// Pour mesurer la duree d execution
 #include <chrono>
-// Record start time
 auto start = std::chrono::high_resolution_clock::now();
 
+// Generer des nombres aleatoires
 #include <random>
 std::default_random_engine engine;
 std::uniform_real_distribution<double> uniform(0,1);
 
-class Vector {
-public:
-    // Constructeur
-    Vector(double x=0, double y=0, double z=0){
-        coord[0] = x;
-        coord[1] = y;
-        coord[2] = z;
-    }
-    // Accesseur pour acceder au i eme element de la coordonnee du vecteur
-    const double& operator[](int i) const { return coord[i]; }
-    double& operator[](int i) { return coord[i]; }
-    
-    // On evitera le calcul couteux de racines carres
-    double getNorm2() {
-        return coord[0] * coord[0] + coord[1] * coord[1] + coord[2] * coord[2];
-    }
-    
-    // Normaliser un vecteur
-    void normalize() {
-        double norm = sqrt(getNorm2());
-        coord[0] /= norm;
-        coord[1] /= norm;
-        coord[2] /= norm;
-    }
-    
-    // Renvoie le vecteur normalise, mais sans modifier le vecteur initial
-    Vector getNormalized() {
-        // Copie du vecteur
-        Vector result(*this);
-        result.normalize();
-        return result;
-    }
-    
-private:
-    double coord[3];
-};
+Vector position_lumiere(25, 25, 30);
+double rayon_lumiere = 3;
 
-// & permet de ne pas charger un tableau complet, seulement de prendre la case memoire du bon element
-Vector operator+(const Vector& a, const Vector &b) {
-    return Vector(a[0] + b[0], a[1] + b[1], a[2] + b[2]);
-}
-Vector operator-(const Vector& a, const Vector &b) {
-    return Vector(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
-}
-Vector operator*(double a, const Vector &b) {
-    return Vector(a*b[0], a*b[1], a*b[2]);
-}
-Vector operator*(const Vector &a, const Vector &b) {
-    return Vector(a[0]*b[0], a[1]*b[1], a[2]*b[2]);
-}
-Vector operator*(const Vector &b, double a) {
-    return Vector(a*b[0], a*b[1], a*b[2]);
-}
-Vector operator/(const Vector& a, double b) {
-    return Vector(a[0]/b, a[1]/b, a[2]/b);
-}
-Vector operator-(const Vector& a) {
-    return Vector(-a[0], -a[1], -a[2]);
-}
-double dot(const Vector& a, const Vector& b) {
-    return (a[0] * b[0] + a[1] * b[1] + a[2] * b[2]);
-}
-Vector cross(const Vector& a, const Vector& b){
-    return Vector(a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]);
-};
 Vector random_cos(const Vector &N) {
     double r1 = uniform(engine);
     double r2 = uniform(engine);
@@ -106,136 +48,6 @@ Vector random_cos(const Vector &N) {
     return direction_aleatoire_repere_local[2]*N + direction_aleatoire_repere_local[0]*tangent1 + direction_aleatoire_repere_local[1]*tangent2;
 }
 
-
-class Ray {
-public:
-    // Constructeur
-    Ray(const Vector& o, const Vector& d) : origin(o), direction(d) {};
-    Vector origin, direction;
-};
-
-
-class Object {
-public:
-    // Albedo rend compte du reflet pour chaque couleur
-    Vector albedo;
-    bool is_mirror;
-    bool is_transparent;
-    bool is_bulle;
-    Object(const Vector &couleur, bool is_mirror = false, bool is_transparent = false, bool is_bulle = false) :
-    is_mirror(is_mirror), is_transparent(is_transparent), is_bulle(is_bulle) {
-        albedo = couleur;
-    };
-    virtual bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const = 0;
-    
-};
-
-class Sphere : public Object {
-public:
-    // Attributs de la classe
-    Vector O;
-    double R;
-
-    // Constructeur
-    Sphere(const Vector &origin, double rayon, const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) : O(origin), R(rayon), Object(couleur, is_mirror, is_transparent, is_bulle) {
-    };
-    
-    bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const {
-        // resolution de l equation du 2nd degre
-        double a = 1.;
-        double b = 2. * dot(d.direction, d.origin - O);
-        double c = (d.origin - O).getNorm2() - R*R;
-        double delta =  b*b - 4. * a*c;
-        if (delta < 0) return false;
-        double t1 = (-b - sqrt(delta)) / (2. * a);
-        double t2 = (-b + sqrt(delta)) / (2. * a);
-        if (t2 < 0) return false;
-        if (t1 > 0)
-            t = t1;
-        else
-            t = t2;
-        // P est le point d'intersection entre le rayon incident et la sphere
-        P = d.origin + t * d.direction;
-        // N est la normale a la sphere au point P
-        N = (P - O) / R;
-        //if ( fabs(N[0]) > 0.2 &&
-          //  cout << N[0] << "  " << N[1] << "  " << N[2] << "  " << endl;
-        return true;
-    }
-};
-
-class Triangle : public Object {
-public:
-    Vector A, B, C;
-    
-    Triangle(const Vector& A, const Vector &B, const Vector& C, const Vector &couleur, bool is_mirror=false, bool is_transparent=false, bool is_bulle=false) : A(A), B(B), C(C), Object(couleur, is_mirror, is_transparent, is_bulle) {
-    };
-
-    bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const {
-        N = cross(B-A, C-A).getNormalized();
-        t = dot(C - d.origin, N) / dot(d.direction, N);
-        if (t<0) return false;
-
-        P = d.origin + t*d.direction;
-        Vector u = B-A;
-        Vector v = C-A;
-        Vector w = P-A;
-        double m11 = u.getNorm2();
-        double m12 = dot(u,v);
-        double m22 = v.getNorm2();
-        double detm = m11*m22 - m12*m12;
-        
-        double b11 = dot(w,u);
-        double b21 = dot(w, v);
-        double detb = b11*m22 - b21 * m12;
-        double beta = detb/detm;
-        
-        double g12 = b11;
-        double g22 = b21;
-        double detg = m11*g22 - m12*g12;
-        double gamma = detg / detm;
-
-        return (gamma > 0 && beta > 0 && (gamma + beta) < 1);
-    }
-};
-
-class Scene{
-public:
-    Scene() {};
-    void addSpheres(const Sphere& s) {objects.push_back(&s);}
-    void addTriangle(const Triangle& s) {objects.push_back(&s);}
-
-    bool intersection(const Ray& d, Vector& P, Vector& N, int& sphere_id, double& min_t) const {
-        bool has_inter = false;
-        min_t = 1E99;
-        sphere_id = -1;
-        
-        for (int i=0; i<objects.size(); i++) {
-            if (i==0) continue;
-            Vector localP, localN;
-            double t;
-            bool local_has_inter = objects[i]->intersection(d, localP, localN, t);
-            if (local_has_inter) {
-                has_inter = true;
-                // Teste si la sphere est plus proche que la plus proche actuelle
-                if (t < min_t) {
-                    min_t = t;
-                    P = localP;
-                    N = localN;
-                    // sphere_id vaut des valeurs genre 3786239801 ??
-                    sphere_id = i;
-                }
-            }
-        }
-        return has_inter;
-    }
-    
-    // Ensemble des spheres de la scene
-    std::vector<const Object*> objects;
-};
-
-Vector position_lumiere(25, 25, 30);
-double rayon_lumiere = 3;
 
 Vector getColor2(const Ray& d, const Scene& s, int& numero_rebond) {
     if(numero_rebond == 0) return Vector(0,0,0);
@@ -417,8 +229,11 @@ int main(int argc, char** argv) {
     //s.addSpheres(s8);
     //s.addSpheres(s9);
     //s.addSpheres(s10);
-    s.addSpheres(s11);
-    s.addTriangle(tri);
+    //s.addSpheres(s11);
+    //s.addTriangle(tri);
+    
+    Geometry g1("girl.obj", 30, Vector(0,-20 ,-28), Vector(1.,1.,1.));
+    s.addGeometry(g1);
     
     int nb_rebonds_max = 5;
     int rebounds_max = nb_rebonds_max;
