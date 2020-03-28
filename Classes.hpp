@@ -20,6 +20,7 @@
 class Ray {
 public:
     // Constructeur
+    Ray() {};
     Ray(const Vector& o, const Vector& d) : origin(o), direction(d) {};
     Vector origin, direction;
 };
@@ -28,7 +29,7 @@ public:
 class Object {
 public :
     Object(){};
-    virtual bool intersection (const Ray& d,  Vector& P, Vector& N, double &t) const=0 ;
+    virtual bool intersection (const Ray& d,  Vector& P, Vector& N, double &t, Vector& color) const=0 ;
     Vector albedo;
     bool is_mirror;
     bool is_transparent;
@@ -48,7 +49,7 @@ public :
         is_bulle = bulle;
     };
 
-    bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const;
+    bool intersection(const Ray& d, Vector& P, Vector& N, double &t, Vector& color) const;
 };
 
 class Triangle : public Object {
@@ -62,7 +63,13 @@ public :
         is_bulle = bulle;
     }
     
-    bool intersection(const Ray& d, Vector& P, Vector& N, double &t) const;
+    bool intersection(const Ray& d, Vector& P, Vector& N, double &t, Vector& color) const {
+        double alpha, beta, gamma;
+        color = albedo;
+        return intersection(d, P, N, t, alpha, beta, gamma);
+    }
+     
+    bool intersection(const Ray& d, Vector& P, Vector& N, double &t, double &alpha, double &beta, double &gamma) const;
 };
 
 class BBox {
@@ -94,6 +101,18 @@ public:
     Vector bmin, bmax;
 };
 
+class BVH {
+public:
+    // Ensemble des triangles entre les indices i0 et i1
+    int i0, i1;
+    BBox bbox;
+    
+    // Fils gauche et droit
+    BVH *fg, *fd;
+    
+};
+
+
 class Geometry : public Object {
 public:
     Geometry(const char* obj, double scaling, const Vector& offset, const Vector& couleur, bool mirror=false, bool transp=false);
@@ -106,10 +125,17 @@ public:
     std::vector<Vector> normals;
     std::vector<Vector> uvs;
     
-    bool intersection(const Ray& d, Vector& P, Vector& N, double& t) const;
-
+    bool intersection(const Ray& d, Vector& P, Vector& N, double& t, Vector& color) const;
+    BBox build_bbox(int i0, int i1);
+    
+    void build_bvh(BVH* node, int i0, int i1);
+    
+    void add_texture(const char* filename);
+    
 private:
-    BBox bb;
+    BVH bvh;
+    std::vector<std::vector<unsigned char> > textures;
+    std::vector<int> w, h;
 };
 
 class Scene{
@@ -119,7 +145,7 @@ public:
     void addTriangle(const Triangle& s) {objects.push_back(&s);}
     void addGeometry(const Geometry& s) {objects.push_back(&s);}
     
-    bool intersection(const Ray& d, Vector& P, Vector& N, int& sphere_id, double& min_t) const;
+    bool intersection(const Ray& d, Vector& P, Vector& N, int& sphere_id, double& min_t, Vector& color) const;
     
     // Ensemble des spheres de la scene
     std::vector<const Object*> objects;
